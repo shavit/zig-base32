@@ -9,11 +9,9 @@ const Error = error{
     OutOfMemory,
 };
 
-// 2-7: 50-55
-// A-Z: 65-90
 pub const standard_alphabet_chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567".*;
 pub const standard_alphabet_values = [32]u8{
-    0b00_00000, // A
+    0b00_00000,
     0b00_00001,
     0b00_00010,
     0b00_00011,
@@ -39,12 +37,12 @@ pub const standard_alphabet_values = [32]u8{
     0b00_10111,
     0b00_11000,
     0b00_11001,
-    0b00_11010, // 2
-    0b00_11011, // 3
-    0b00_11100, // 4
-    0b00_11101, // 5
-    0b00_11110, // 6
-    0b00_11111, // 7
+    0b00_11010,
+    0b00_11011,
+    0b00_11100,
+    0b00_11101,
+    0b00_11110,
+    0b00_11111,
 };
 
 pub const Base32Encoder = struct {
@@ -62,9 +60,7 @@ pub const Base32Encoder = struct {
         const rem: u8 = @intCast(u8, text.len % wsize);
         const n: u8 = @intCast(u8, text.len / wsize);
         var buf: [9]u8 = .{0} ** 9;
-
-        const allocator = self.allocator;
-        var list = std.ArrayList(u8).init(allocator);
+        var list = std.ArrayList(u8).init(self.allocator);
 
         for (0..n) |i| {
             for (wsize * i..wsize * (i + 1)) |j| {
@@ -122,6 +118,67 @@ pub const Base32Encoder = struct {
 
         return Error.InvalidCharacter;
     }
+
+    fn lookup_v(b: u8) Error!u8 {
+        for (standard_alphabet_chars, 0..) |x, i| {
+            if (b == x) return standard_alphabet_values[i];
+        }
+
+        return Error.InvalidCharacter;
+    }
+
+    pub fn decode(self: *Self, text: []const u8) Error![]u8 {
+        if (text.len % 8 != 0) return Error.InvalidPadding;
+        const wsize = 8;
+        const n: u8 = @intCast(u8, text.len / wsize);
+        var buf: [9]u8 = .{0} ** 9;
+        var list = std.ArrayList(u8).init(self.allocator);
+
+        for (0..n) |i| {
+            for (wsize * i..wsize * (i + 1)) |j| {
+                if (text[j] == "="[0]) break;
+                buf[buf[8]] = text[j];
+                buf[8] += 1;
+            }
+
+            const spit = try spit_decoded(buf);
+            try list.appendSlice(spit[0..spit[8]]);
+            buf = .{0} ** 9;
+        }
+
+        return list.items;
+    }
+
+    fn spit_decoded(src: [9]u8) Error![9]u8 {
+        var dest: [9]u8 = .{0} ** 9;
+        var lut = [_]u8{0} ** 8;
+        inline for (0..8) |i| {
+            lut[i] = Base32Encoder.lookup_v(src[i]) catch 0;
+        }
+
+        if (src[8] > 1) {
+            dest[0] = lut[0] << 3 | lut[1] >> 2;
+            dest[8] = 1;
+        }
+        if (src[8] > 3) {
+            dest[1] = lut[1] << 6 | lut[2] << 1 | lut[3] >> 4;
+            dest[8] = 2;
+        }
+        if (src[8] > 4) {
+            dest[2] = lut[3] << 4 | lut[4] >> 1;
+            dest[8] = 3;
+        }
+        if (src[8] > 6) {
+            dest[3] = lut[4] << 7 | lut[5] << 2 | lut[6] >> 3;
+            dest[8] = 4;
+        }
+        if (src[8] == 8) {
+            dest[4] = lut[6] << 5 | lut[7];
+            dest[8] = 5;
+        }
+
+        return dest;
+    }
 };
 
 const TestPair = struct {
@@ -147,6 +204,28 @@ test "encode string" {
 
     for (testCases) |t| {
         const res = try b32.encode(t.arg);
+        try testing.expect(std.mem.eql(u8, res, t.expect));
+    }
+}
+
+test "decode string" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    var b32 = Base32Encoder.init(allocator);
+    const testCases = [_]TestPair{
+        .{ .arg = "JA======", .expect = "H" },
+        .{ .arg = "JBSQ====", .expect = "He" },
+        .{ .arg = "JBSWY===", .expect = "Hel" },
+        .{ .arg = "JBSWY3A=", .expect = "Hell" },
+        .{ .arg = "JBSWY3DP", .expect = "Hello" },
+        .{ .arg = "JBSWY3DPEE======", .expect = "Hello!" },
+        .{ .arg = "GEZDGNBVGY3TQOI=", .expect = "123456789" },
+        .{ .arg = "GEZDGNBVGY3TQOJQGEZDGNBV", .expect = "123456789012345" },
+    };
+
+    for (testCases) |t| {
+        const res = try b32.decode(t.arg);
         try testing.expect(std.mem.eql(u8, res, t.expect));
     }
 }
