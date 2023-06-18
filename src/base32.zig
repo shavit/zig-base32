@@ -57,8 +57,8 @@ pub const Base32Encoder = struct {
 
     pub fn encode(self: *Self, text: []const u8) Error![]u8 {
         const wsize = 5;
-        const rem: u8 = @intCast(u8, text.len % wsize);
-        const n: u8 = @intCast(u8, text.len / wsize);
+        const rem: u8 = @intCast(text.len % wsize);
+        const n: u8 = @intCast(text.len / wsize);
         var buf: [9]u8 = .{0} ** 9;
         var list = std.ArrayList(u8).init(self.allocator);
 
@@ -130,7 +130,7 @@ pub const Base32Encoder = struct {
     pub fn decode(self: *Self, text: []const u8) Error![]u8 {
         if (text.len % 8 != 0) return Error.InvalidPadding;
         const wsize = 8;
-        const n: u8 = @intCast(u8, text.len / wsize);
+        const n: u8 = @intCast(text.len / wsize);
         var buf: [9]u8 = .{0} ** 9;
         var list = std.ArrayList(u8).init(self.allocator);
 
