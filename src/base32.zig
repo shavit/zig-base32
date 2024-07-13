@@ -9,41 +9,10 @@ const Error = error{
     OutOfMemory,
 };
 
-pub const standard_alphabet_chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567".*;
-pub const standard_alphabet_values = [32]u8{
-    0b00_00000,
-    0b00_00001,
-    0b00_00010,
-    0b00_00011,
-    0b00_00100,
-    0b00_00101,
-    0b00_00110,
-    0b00_00111,
-    0b00_01000,
-    0b00_01001,
-    0b00_01010,
-    0b00_01011,
-    0b00_01100,
-    0b00_01101,
-    0b00_01110,
-    0b00_01111,
-    0b00_10000,
-    0b00_10001,
-    0b00_10010,
-    0b00_10011,
-    0b00_10100,
-    0b00_10101,
-    0b00_10110,
-    0b00_10111,
-    0b00_11000,
-    0b00_11001,
-    0b00_11010,
-    0b00_11011,
-    0b00_11100,
-    0b00_11101,
-    0b00_11110,
-    0b00_11111,
-};
+pub const chars_rfc4648 = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567".*;
+//pub const chars_crockford = "0123456789ABCDEFGHJKMNPQRSTVWXYZ".*;
+//pub const chars_hex = "0123456789ABCDEFGHIJKLMNOPQRSTUV".*;
+//pub const chars_zbase32 = "ybndrfg8ejkmcpqxot1uwisza345h769".*;
 
 pub const Base32Encoder = struct {
     const Self = @This();
@@ -112,16 +81,18 @@ pub const Base32Encoder = struct {
     }
 
     fn lookup_b(b: u8) Error!u8 {
-        for (standard_alphabet_values, 0..) |x, i| {
-            if (b == x) return standard_alphabet_chars[i];
+        if (chars_rfc4648.len <= b) {
+            return Error.InvalidCharacter;
+        } else {
+            return chars_rfc4648[b];
         }
-
-        return Error.InvalidCharacter;
     }
 
     fn lookup_v(b: u8) Error!u8 {
-        for (standard_alphabet_chars, 0..) |x, i| {
-            if (b == x) return standard_alphabet_values[i];
+        for (chars_rfc4648, 0..) |x, i| {
+            if (b == x) {
+                return @intCast(i);
+            }
         }
 
         return Error.InvalidCharacter;
