@@ -29,7 +29,8 @@ pub const Base32Encoder = struct {
         const rem: u8 = @intCast(text.len % wsize);
         const n: u8 = @intCast(text.len / wsize);
         var buf: [9]u8 = .{0} ** 9;
-        var list = std.ArrayList(u8).init(self.allocator);
+
+        var list: std.ArrayList(u8) = .empty;
 
         for (0..n) |i| {
             for (wsize * i..wsize * (i + 1)) |j| {
@@ -37,7 +38,7 @@ pub const Base32Encoder = struct {
                 buf[8] += 1;
             }
             const spit = try spit_encoded(buf);
-            try list.appendSlice(&spit);
+            try list.appendSlice(self.allocator, spit[0..8]);
             buf = .{0} ** 9;
         }
 
@@ -47,34 +48,34 @@ pub const Base32Encoder = struct {
                 buf[i] = text[wsize * n + i];
             }
             const spit = try spit_encoded(buf);
-            try list.appendSlice(&spit);
+            try list.appendSlice(self.allocator, spit[0..8]);
         }
 
-        return list.items;
+        return list.toOwnedSlice(self.allocator);
     }
 
     fn spit_encoded(src: [9]u8) Error![8]u8 {
         const b32 = Base32Encoder;
-        var dest: [8]u8 = .{0} ** 8;
-        for (src[8]..8) |i| dest[i] = "="[0];
+        var dest: [8]u8 = .{'='} ** 8;
+        if (src[8] > 5) return Error.InvalidCharacter;
 
-        if (src[8] > 4) {
-            dest[7] = try b32.lookup_b(src[4] & 0x1f);
-        }
-        if (src[8] > 3) {
-            dest[5] = try b32.lookup_b((src[3] >> 2) & 0x1f);
-            dest[6] = try b32.lookup_b((src[4] >> 5) | ((src[3] << 3) & 0x1f));
-        }
-        if (src[8] > 2) {
-            dest[4] = try b32.lookup_b((src[3] >> 7) | ((src[2] << 1) & 0x1f));
+        if (src[8] > 0) {
+            dest[0] = try b32.lookup_b((src[0] & 0xF8) >> 3);
+            dest[1] = try b32.lookup_b(((src[0] & 0x07) << 2) | ((src[1] & 0xC0) >> 6));
         }
         if (src[8] > 1) {
-            dest[2] = try b32.lookup_b((src[1] >> 1) & 0x1f);
-            dest[3] = try b32.lookup_b(((src[2] >> 4) & 0x1f) | (src[1] << 4) & 0x1f);
+            dest[2] = try b32.lookup_b((src[1] & 0x3E) >> 1);
+            dest[3] = try b32.lookup_b(((src[1] & 0x01) << 4) | ((src[2] & 0xF0) >> 4));
         }
-        if (src[8] > 0) {
-            dest[0] = try b32.lookup_b(src[0] >> 3);
-            dest[1] = try b32.lookup_b(((src[1] >> 6) & 0x1f) | ((src[0] << 2) & 0x1f));
+        if (src[8] > 2) {
+            dest[4] = try b32.lookup_b(((src[2] & 0x0F) << 1) | ((src[3] & 0x80) >> 7));
+        }
+        if (src[8] > 3) {
+            dest[5] = try b32.lookup_b((src[3] & 0x7C) >> 2);
+            dest[6] = try b32.lookup_b(((src[3] & 0x03) << 3) | ((src[4] & 0xE0) >> 5));
+        }
+        if (src[8] > 4) {
+            dest[7] = try b32.lookup_b(src[4] & 0x1F);
         }
 
         return dest;
@@ -99,11 +100,11 @@ pub const Base32Encoder = struct {
     }
 
     pub fn decode(self: *Self, text: []const u8) Error![]u8 {
-        if (text.len % 8 != 0) return Error.InvalidPadding;
+        if (text.len == 1) return Error.InvalidPadding;
         const wsize = 8;
         const n: u8 = @intCast(text.len / wsize);
         var buf: [9]u8 = .{0} ** 9;
-        var list = std.ArrayList(u8).init(self.allocator);
+        var list: std.ArrayList(u8) = .empty;
 
         for (0..n) |i| {
             for (wsize * i..wsize * (i + 1)) |j| {
@@ -113,11 +114,11 @@ pub const Base32Encoder = struct {
             }
 
             const spit = try spit_decoded(buf);
-            try list.appendSlice(spit[0..spit[8]]);
+            try list.appendSlice(self.allocator, spit[0..spit[8]]);
             buf = .{0} ** 9;
         }
 
-        return list.items;
+        return list.toOwnedSlice(self.allocator);
     }
 
     fn spit_decoded(src: [9]u8) Error![9]u8 {
@@ -191,6 +192,7 @@ test "decode string" {
         .{ .arg = "JBSWY3A=", .expect = "Hell" },
         .{ .arg = "JBSWY3DP", .expect = "Hello" },
         .{ .arg = "JBSWY3DPEE======", .expect = "Hello!" },
+        .{ .arg = "NBSWY3DPEB3W64TMMQ======", .expect = "hello world" },
         .{ .arg = "GEZDGNBVGY3TQOI=", .expect = "123456789" },
         .{ .arg = "GEZDGNBVGY3TQOJQGEZDGNBV", .expect = "123456789012345" },
     };

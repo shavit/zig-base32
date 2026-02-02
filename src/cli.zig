@@ -47,13 +47,13 @@ fn println(text: []const u8) void {
 }
 
 fn write_stdout(msg: []const u8) !void {
-    const stdout_file = std.io.getStdOut().writer();
-    var bw = std.io.bufferedWriter(stdout_file);
-    const writer = bw.writer();
-
+    const stdout_file = std.fs.File.stdout();
+    var buf: [1024]u8 = undefined;
+    var bw = stdout_file.writer(&buf);
+    const writer = &bw.interface;
     try writer.print("{s}\n", .{msg});
 
-    try bw.flush();
+    try writer.flush();
 }
 
 fn goodbye(comptime format: []const u8, args: anytype) noreturn {
